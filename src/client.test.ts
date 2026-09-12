@@ -131,3 +131,45 @@ test("the ceiling never sits below the caller's own fee floor", () => {
   assert.equal(maxFeeOf({ to: RECIPIENT, amountSompi: 1n, feeSompi: 20_000_000n }), 20_000_000n);
   assert.equal(maxFeeOf({ to: RECIPIENT, amountSompi: 1n, maxFeeSompi: 5_000_000n }), 5_000_000n);
 });
+
+test("a negative fee from the prover is refused before signing", async () => {
+  const daemon = fakeDaemon([{ amount: 1_000_000_000n, fee: -3_000_000n, remaining: 0n }]);
+  const log = { maxFees: [] as bigint[] };
+  await assert.rejects(
+    client(daemon.fetch).send(signerStub(log), { to: RECIPIENT, amountSompi: 1_000_000_000n }),
+    (error: unknown) => error instanceof ZKasSdkError && /negative amount/.test(error.message),
+  );
+  assert.equal(log.maxFees.length, 0, "the signer must never see a negative-fee payment");
+});
+
+test("a recipient on the wrong network is refused before any network call", async () => {
+  const daemon = fakeDaemon([{ amount: 1_000_000_000n, fee: 3_000_000n, remaining: 0n }]);
+  await assert.rejects(
+    client(daemon.fetch).send(signerStub({ maxFees: [] }), {
+      to: "zkastest:qqtestrecipient",
+      amountSompi: 1_000_000_000n,
+    }),
+    (error: unknown) => error instanceof ZKasSdkError && /not on mainnet/.test(error.message),
+  );
+  assert.equal(daemon.submitted.length, 0);
+});
+
+test("a malformed recipient is refused before any network call", async () => {
+  const daemon = fakeDaemon([{ amount: 1_000_000_000n, fee: 3_000_000n, remaining: 0n }]);
+  await assert.rejects(
+    client(daemon.fetch).send(signerStub({ maxFees: [] }), { to: "not an address", amountSompi: 1n }),
+    (error: unknown) => error instanceof TypeError && /well-formed/.test(error.message),
+  );
+});
+
+test("a submitted session cannot be submitted again", async () => {
+  const daemon = fakeDaemon([{ amount: 5_000_000_000n, fee: 3_000_000n, remaining: 0n }]);
+  const c = client(daemon.fetch);
+  const prepared = await c.prepare("ff".repeat(96), { to: RECIPIENT, amountSompi: 5_000_000_000n });
+  await c.submit(prepared.session, [{ index: 0, sig: "aa".repeat(64) }]);
+  await assert.rejects(
+    c.submit(prepared.session, [{ index: 0, sig: "aa".repeat(64) }]),
+    (error: unknown) => error instanceof ZKasSdkError && /already submitted/.test(error.message),
+  );
+  assert.equal(daemon.submitted.length, 1);
+});

@@ -52,5 +52,14 @@ export function assertPaymentRequest(request: PaymentRequest): void {
   if (request.amountSompi <= 0n) throw new RangeError("amountSompi must be positive");
   if (request.feeSompi !== undefined && request.feeSompi < 0n) throw new RangeError("feeSompi cannot be negative");
   if (request.maxFeeSompi !== undefined && request.maxFeeSompi <= 0n) throw new RangeError("maxFeeSompi must be positive");
-  if (!request.to.trim()) throw new TypeError("recipient is required");
+  const to = request.to.trim();
+  if (!to) throw new TypeError("recipient is required");
+  // Shape check before anything talks to the daemon: a shielded address is
+  // bech32 with a zkas-prefixed human part (zkas:, zkastest:, ...),
+  // lowercase alphanumerics, and a plausible length. Full checksum
+  // verification happens on the daemon and in the signer; this rejects typos
+  // and pastes from the wrong place early.
+  if (!/^zkas[a-z]*:[a-z0-9]{10,200}$/.test(to)) {
+    throw new TypeError("recipient is not a well-formed shielded address");
+  }
 }
