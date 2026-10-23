@@ -35,17 +35,17 @@ Two properties are enforced by the signer, not by policy documents:
 
 ## Install
 
-Install straight from the public GitHub repo (builds `dist/` on install — the
+Install straight from the public GitLab repo (builds `dist/` on install — the
 repo ships TypeScript source, `dist/` is produced by the package's `prepare`
 step):
 
 ```bash
-npm install github:firecash/zkas-sdk
-# or pin a tag/commit:  npm install github:firecash/zkas-sdk#v0.2.0
+npm install gitlab:zkas-group/zkas-sdk
+# or pin a tag/commit:  npm install gitlab:zkas-group/zkas-sdk#v0.2.0
 ```
 
 > The `@zkas/sdk` npm package is not published to the public registry yet, so
-> `npm install @zkas/sdk` will 404. Use the GitHub install above until it lands.
+> `npm install @zkas/sdk` will 404. Use the GitLab install above until it lands.
 
 ## Send a payment (hosted, non-custodial)
 
