@@ -62,6 +62,35 @@ export interface PrepareResponse {
   disclosure: LegacyDisclosure[];
   spend_auth: LegacySpendAuth[];
   preparedPayment: PreparedPaymentEnvelope;
+  /** Present when the daemon prepared a Stage W uniform transaction (`uniform: true`). */
+  uniform?: UniformPrepareInfo;
+}
+
+/** Stage W facts walletd returns with a uniform prepare (spec 02 W5/W8). */
+export interface UniformPrepareInfo {
+  anchor_blue: number;
+  anchor_epoch: number;
+  /** First blue score at which consensus no longer accepts this anchor. */
+  valid_until_blue: number;
+  sink_blue: number;
+  lambda_per_s: number;
+  /** Uniform transactions the whole payment needs (1..=8). */
+  siblings: number;
+  /** Window over which the siblings are released: max(hold, 4k²/λ̂). */
+  split_window_ms: number;
+  fee_sompi: number;
+}
+
+/** `GET /api/uniform/anchor`. */
+export interface UniformAnchorInfo {
+  anchor_blue: number;
+  anchor_epoch: number;
+  valid_until_blue: number;
+  sink_blue: number;
+  lambda_per_s: number;
+  epoch: number;
+  depth: number;
+  fee_sompi: number;
 }
 
 export interface DeviceSignature {
@@ -99,6 +128,15 @@ export interface PaymentRequest {
    * fit one transaction instead of partially paying it.
    */
   allowChunking?: boolean;
+  /**
+   * Stage W (spec 02): send as uniform transactions — 4 actions, a fee of exactly 0.031178 ZKAS,
+   * held `U[0, W]` before broadcast and, when the payment needs more than 4 notes, split into at
+   * most 8 siblings released at independent random times. Opt-in: it needs a daemon with the
+   * Stage W `/prepare` and changes the fee and latency of a send. Default `false`.
+   */
+  uniform?: boolean;
+  /** Hold mode under `uniform` (default "standard", U[0, 120 s]). */
+  hold?: "immediate" | "standard" | "private";
 }
 
 /** One transaction of a logical payment that spanned several. */
