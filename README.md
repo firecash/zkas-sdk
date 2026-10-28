@@ -9,7 +9,7 @@ cryptography. This repository is the developer-facing home of the SDK:
   with automatic multi-transaction chunking and progress events.
 - **Rust crates** (`zkas-sdk`, `zkas-signer`, `zkas-wallet-engine`): the
   canonical implementation, developed inside the node workspace at
-  [`zkas-rusty/sdk`](https://gitlab.com/zkas-group/zkas-rusty/-/tree/main/sdk)
+  [`zkas-rusty/sdk`](https://zkas.info/code/rusty/tree/main/sdk)
   so the wallet daemon and the SDK can never drift apart. Depend on them as git
   dependencies.
 - **`docs/`**: architecture, integration/security guide, and honest status.
@@ -52,7 +52,7 @@ npm install gitlab:zkas-group/zkas-sdk
 ```ts
 import { ZKasClient, wasmPaymentSigner, DEFAULT_MAX_FEE_SOMPI } from "@zkas/sdk";
 // The WASM signer ships with the wallet; build it from
-// https://gitlab.com/zkas-group/zkas-signer (wasm-bindgen, no proving circuit).
+// https://zkas.info/code/signer (wasm-bindgen, no proving circuit).
 import { fvkHex, verifyAndSignPayment } from "./firecash-signer";
 
 const client = new ZKasClient({
