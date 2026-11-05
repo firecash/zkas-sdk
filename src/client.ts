@@ -40,6 +40,43 @@ export class ZKasSdkError extends Error {
   }
 }
 
+/**
+ * The wallet service could not tell whether a payment's broadcast went out — its
+ * connection to the node failed mid-broadcast (HTTP 504 `outcome_unknown`), or the
+ * connection to the service itself failed while it was broadcasting. The payment may
+ * have been sent. Never treat this as a failure: retry the SAME payment with the SAME
+ * `requestId`, and the service answers with what it already sent instead of paying again.
+ * `parts` lists the transactions of this payment already confirmed sent; `txid`, when
+ * known, is the transaction whose outcome is unknown.
+ */
+export class SubmitOutcomeUnknownError extends ZKasSdkError {
+  constructor(
+    message: string,
+    readonly txid: string | undefined,
+    readonly parts: SendPart[],
+    status?: number,
+    body?: unknown,
+  ) {
+    super(message, status, body);
+    this.name = "SubmitOutcomeUnknownError";
+  }
+}
+
+/** The wallet service's "this payment was already sent" answer (HTTP 409), if `e` is one. */
+export function alreadySentOf(e: unknown): { txid: string; amount_sompi_exact?: string; amount_sompi?: number; fee_sompi_exact?: string; fee_sompi?: number } | undefined {
+  if (!(e instanceof ZKasSdkError) || e.status !== 409) return undefined;
+  const sent = (e.body as { already_sent?: unknown } | undefined)?.already_sent;
+  return typeof sent === "object" && sent !== null && typeof (sent as { txid?: unknown }).txid === "string"
+    ? (sent as { txid: string })
+    : undefined;
+}
+
+/** The request id of part `chunk` of a payment (the service's own convention). */
+function partRequestId(requestId: string | undefined, chunk: number): string | undefined {
+  if (requestId === undefined) return undefined;
+  return chunk === 0 ? requestId.trim() : `${requestId.trim()}.${chunk}`;
+}
+
 export interface ZKasClientConfig {
   baseUrl: string;
   walletToken?: string;
@@ -129,7 +166,30 @@ export class ZKasClient {
       });
 
       onStage?.("preparing", progress());
-      const prepared = await this.prepare(fvk, { ...request, amountSompi: owed }, chunking);
+      const requestId = partRequestId(request.requestId, chunk);
+      let prepared: PrepareResponse;
+      try {
+        prepared = await this.prepare(fvk, { ...request, amountSompi: owed, ...(requestId === undefined ? {} : { requestId }) }, chunking);
+      } catch (e) {
+        // A retry of a payment the service already broadcast (same requestId): record that
+        // transaction as this part instead of paying it again. Only for a caller-supplied id
+        // — a service cannot claim a fresh payment was "already sent" — and never for more
+        // than this part still owes.
+        const done = request.requestId === undefined ? undefined : alreadySentOf(e);
+        if (!done) throw e;
+        const paid = BigInt(done.amount_sompi_exact ?? Math.trunc(done.amount_sompi ?? 0));
+        const paidFee = BigInt(done.fee_sompi_exact ?? Math.trunc(done.fee_sompi ?? 0));
+        if (paid <= 0n || paid > owed || paidFee < 0n) throw new ZKasSdkError("the service's record of this payment does not match the request");
+        parts.push({ txid: done.txid, amountSompi: paid, feeSompi: paidFee });
+        sent += paid;
+        fees += paidFee;
+        owed -= paid;
+        if (owed <= 0n) break;
+        if (chunk === MAX_CHUNKS - 1) {
+          throw new ZKasSdkError(`sent ${zkas(sent)} ZKAS in ${parts.length} transactions, but ${zkas(owed)} ZKAS could not be sent`);
+        }
+        continue;
+      }
       const amount = BigInt(prepared.amount_sompi_exact);
       const fee = BigInt(prepared.fee_sompi_exact);
       const remaining = BigInt(prepared.remaining_sompi_exact ?? Math.trunc(prepared.remaining_sompi ?? 0));
@@ -158,7 +218,29 @@ export class ZKasClient {
       });
 
       onStage?.("broadcasting", progress());
-      const result = await this.submit(prepared.session, signatures);
+      let result: SubmitResponse;
+      try {
+        result = await this.submit(prepared.session, signatures);
+      } catch (e) {
+        // No answer, the service saying it cannot tell (504 outcome_unknown), or a reply that
+        // is not the service's (a proxy's error page): the transaction may be on the network.
+        const unknown =
+          !(e instanceof ZKasSdkError) ||
+          (e.status === 504 && (e.body as { outcome_unknown?: unknown } | undefined)?.outcome_unknown === true) ||
+          ((e.status ?? 0) >= 500 && e.body === undefined);
+        if (!unknown) throw e;
+        const txid = e instanceof ZKasSdkError ? (e.body as { txid?: string } | undefined)?.txid : undefined;
+        throw new SubmitOutcomeUnknownError(
+          `it is not known whether this payment's transaction went out${txid ? ` (${txid})` : ""}; ` +
+            (request.requestId === undefined
+              ? "check the wallet's history before paying again — without a requestId a retry cannot be matched to it"
+              : "retry with the same requestId: an already-sent payment is answered, never paid twice"),
+          txid,
+          [...parts],
+          e instanceof ZKasSdkError ? e.status : undefined,
+          e instanceof ZKasSdkError ? e.body : undefined,
+        );
+      }
       parts.push({ txid: result.txid, amountSompi: BigInt(result.amount_sompi_exact), feeSompi: BigInt(result.fee_sompi_exact) });
       sent += BigInt(result.amount_sompi_exact);
       fees += BigInt(result.fee_sompi_exact);
@@ -173,6 +255,7 @@ export class ZKasClient {
       }
     }
 
+    if (parts.length === 0) throw new ZKasSdkError("nothing was sent");
     onStage?.("submitted");
     return { txid: parts[0]!.txid, txids: parts.map((p) => p.txid), parts, amountSompi: sent, feeSompi: fees };
   }
@@ -185,6 +268,7 @@ export class ZKasClient {
       ...(request.feeSompi === undefined ? {} : { fee: request.feeSompi.toString() }),
       ...(request.memo === undefined ? {} : { memo: request.memo }),
       ...(allowPartial ? { allow_partial: true } : {}),
+      ...(request.requestId === undefined ? {} : { request_id: request.requestId }),
     });
   }
 

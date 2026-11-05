@@ -53,4 +53,8 @@ export function assertPaymentRequest(request: PaymentRequest): void {
   if (request.feeSompi !== undefined && request.feeSompi < 0n) throw new RangeError("feeSompi cannot be negative");
   if (request.maxFeeSompi !== undefined && request.maxFeeSompi <= 0n) throw new RangeError("maxFeeSompi must be positive");
   if (!request.to.trim()) throw new TypeError("recipient is required");
+  if (request.requestId !== undefined && (request.requestId.trim().length === 0 || request.requestId.trim().length > 120)) {
+    // 120, not the service's 128: later parts of a split payment append ".<n>".
+    throw new RangeError("requestId must be 1–120 characters");
+  }
 }

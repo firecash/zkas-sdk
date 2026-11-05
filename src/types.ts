@@ -93,7 +93,16 @@ export interface PaymentRequest {
   maxFeeSompi?: bigint;
   memo?: string;
   /**
-   * A standard transaction spends at most 6 notes, so a fragmented wallet may
+   * Idempotency key for this payment: 1–128 characters, unique per payment (a
+   * withdrawal id, an invoice number). The wallet service records each broadcast
+   * under it for 24 hours, so retrying the same payment with the same id — after a
+   * timeout, a crash, or a {@link SubmitOutcomeUnknownError} — returns what was
+   * already sent instead of paying again. Strongly recommended for any automated
+   * payment; required to retry safely.
+   */
+  requestId?: string;
+  /**
+   * A standard transaction spends at most 38 notes, so a fragmented wallet may
    * need several transactions for one payment. `true` (the default) sends in
    * chunks until the amount is covered; `false` refuses a payment that does not
    * fit one transaction instead of partially paying it.
