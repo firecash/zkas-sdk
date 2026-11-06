@@ -211,6 +211,57 @@ export interface HistoryRow {
   credits?: HistoryCredit[];
 }
 
+/** One event of the deposit journal (`GET /api/wallet/deposits`). Key a ledger entry on `(txid, i)`. */
+export interface DepositEvent {
+  /** Sequence number: ask for `after: seq` next time. Never reused. */
+  seq: number;
+  kind: "credit" | "memo" | "rebuild";
+  txid?: string;
+  /** `credit`: the output's index among the transaction's credits to this wallet. */
+  i?: number;
+  recipient?: string;
+  /** `credit`: the diversifier index of `recipient` as a decimal string (the customer id); null if not this wallet's. */
+  index?: string | null;
+  amountSompiExact?: string;
+  memo?: string | null;
+  /** `credit`: false until the full transaction was read; a `memo` event follows then. */
+  memoKnown?: boolean;
+  daaScore?: number;
+  timestamp?: number;
+  /** `memo`: the memos of each credit (`i`) of `txid`, once read. */
+  credits?: { i: number; memo: string | null }[];
+  /** `rebuild`: the wallet rescans from its birthday; every credit is written again as re-found. */
+  restart?: "birthday";
+  scannedDaa?: number;
+}
+
+export interface DepositPage {
+  events: DepositEvent[];
+  /** The newest event's sequence number in the journal; `after` equal to it returns nothing new. */
+  last_seq: number;
+  after: number;
+}
+
+/** What became of a payment sent with a `requestId` (`GET /api/wallet/requests/{id}`). */
+export interface RequestStatus {
+  request_id: string;
+  /** `in_progress`: still being sent, retry later with the same id; `sent`: see `transactions`. */
+  state: "in_progress" | "sent";
+  amount_sompi_exact?: string;
+  fee_sompi_exact?: string;
+  tx_count?: number;
+  transactions?: {
+    txid: string;
+    /** `landed`: accepted by a chain block (`depth` DAA below the tip); `pending`: not yet seen accepted; `returned_or_settled`: no longer pending (never landed and its coins came back, or settled by the scan). */
+    state: "landed" | "pending" | "returned_or_settled" | "unknown";
+    block?: string;
+    daa_score?: number;
+    depth?: number;
+  }[];
+  /** Other payments sent with the same id (the id was reused): their first txids. */
+  other_payments_with_this_id?: string[];
+}
+
 export interface WalletHistory {
   recoverableHistory: boolean;
   total: number;

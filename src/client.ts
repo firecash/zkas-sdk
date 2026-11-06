@@ -12,6 +12,8 @@ import type {
   WalletHistory,
   WalletStatus,
   SendResult,
+  DepositPage,
+  RequestStatus,
 } from "./types.js";
 
 /**
@@ -111,6 +113,23 @@ export class ZKasClient {
   /** Chain-derived history (survives seed restores, unlike device-local lists). */
   async history(): Promise<WalletHistory> {
     return this.#request<WalletHistory>("GET", "/api/wallet/history");
+  }
+
+  /**
+   * The deposit journal, oldest first, after sequence number `after` (0 = from the start): the
+   * way to credit deposits. Nothing is skipped however long the caller was away, nothing is
+   * returned twice; store the last `seq` processed. See `DepositEvent`.
+   */
+  async deposits(after = 0, limit = 500): Promise<DepositPage> {
+    return this.#request<DepositPage>("GET", `/api/wallet/deposits?after=${Math.max(0, Math.floor(after))}&limit=${Math.max(1, Math.floor(limit))}`);
+  }
+
+  /**
+   * What became of a payment sent with `requestId`, for a caller that lost the answer. 404
+   * (`ZKasSdkError` with status 404) when the daemon has no record of it for this wallet.
+   */
+  async requestStatus(requestId: string): Promise<RequestStatus> {
+    return this.#request<RequestStatus>("GET", `/api/wallet/requests/${encodeURIComponent(requestId)}`);
   }
 
   /**

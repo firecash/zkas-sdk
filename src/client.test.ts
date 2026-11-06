@@ -213,3 +213,26 @@ test("an unusable requestId is refused before anything is sent", async () => {
   await assert.rejects(client.send(signerStub({ maxFees: [] }), { to: RECIPIENT, amountSompi: 500n, requestId: " " }), RangeError);
   await assert.rejects(client.send(signerStub({ maxFees: [] }), { to: RECIPIENT, amountSompi: 500n, requestId: "x".repeat(121) }), RangeError);
 });
+
+test("the deposit journal is paged by sequence number and a request's fate is asked by its id", async () => {
+  const seen: string[] = [];
+  const fetch = (async (url: unknown) => {
+    const path = String(url);
+    seen.push(path);
+    if (path.includes("/api/wallet/deposits")) {
+      return new Response(JSON.stringify({ events: [{ seq: 8, kind: "credit", txid: "ab", i: 0, amountSompiExact: "5" }], last_seq: 8, after: 7 }), { status: 200 });
+    }
+    if (path.includes("/api/wallet/requests/")) {
+      return new Response(JSON.stringify({ request_id: "w/1", state: "sent", transactions: [{ txid: "ab", state: "landed", depth: 3 }] }), { status: 200 });
+    }
+    return new Response("{}", { status: 404 });
+  }) as unknown as typeof globalThis.fetch;
+  const client = new ZKasClient({ baseUrl: "http://daemon", network: "mainnet", fetch });
+  const page = await client.deposits(7, 10);
+  assert.equal(page.last_seq, 8);
+  assert.equal(page.events[0]?.seq, 8);
+  assert.ok(seen[0]?.endsWith("/api/wallet/deposits?after=7&limit=10"));
+  const r = await client.requestStatus("w/1");
+  assert.equal(r.transactions?.[0]?.state, "landed");
+  assert.ok(seen[1]?.endsWith("/api/wallet/requests/w%2F1"), "the id is URL-encoded");
+});

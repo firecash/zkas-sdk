@@ -87,6 +87,29 @@ if (status.missing_history) {
 }
 ```
 
+## Crediting deposits and settling withdrawals (exchanges)
+
+```ts
+// Deposits: page the journal by sequence number; store the last seq you processed.
+// Key your ledger on (txid, i); `index` is the customer id the address was issued at.
+let after = loadLastSeq();
+for (;;) {
+  const page = await client.deposits(after, 1000);
+  for (const e of page.events) {
+    if (e.kind === "credit") creditCustomer(e.index, e.amountSompiExact, e.txid, e.i);
+    if (e.kind === "rebuild") reviewUnconfirmedCredits(); // every credit is written again as re-found
+    after = e.seq;
+  }
+  saveLastSeq(after);
+  if (page.events.length === 0) break;
+}
+
+// Withdrawals: send with a requestId; if the answer was lost, ask what became of it
+// instead of paying again.
+const fate = await client.requestStatus("withdrawal-88213");
+// fate.state: "in_progress" | "sent"; each transaction: "landed" (with depth) | "pending" | "returned_or_settled"
+```
+
 ## Development
 
 ```bash
