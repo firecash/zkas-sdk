@@ -170,16 +170,43 @@ export interface WalletBalance {
   error: string | null;
 }
 
+/** One output of a history row's transaction: for `received`, a payment to one of this wallet's addresses. */
+export interface HistoryCredit {
+  recipient: string;
+  amountSompi: number;
+  /** Exact decimal string; `amountSompi` loses precision above 2^53. */
+  amountSompiExact: string;
+  amountZkas: number;
+  memo?: string | null;
+}
+
 export interface HistoryRow {
   kind: "coinbase" | "received" | "sent";
   txid: string;
   daaScore: number;
   timestamp: number;
+  /** For `received`: the SUM over `credits`. Never attribute a deposit from this. */
   amountSompi: number;
+  /** Exact decimal string of `amountSompi`. */
+  amountSompiExact?: string;
   amountZkas: number;
+  amountKind?: "paid" | "netOutflow";
   feeSompi: number;
+  feeSompiExact?: string;
+  /** For `received`: false until the full transaction (memos) has been read. */
+  feeKnown?: boolean;
+  /**
+   * For `received`: one address of the transaction, or null when it paid several. Never attribute
+   * a deposit from this: credit each entry of `credits`, keyed on (txid, index).
+   */
   recipient?: string | null;
   memo?: string | null;
+  /**
+   * One entry per output. Credit deposits from these, never from the row's own amount or
+   * recipient; they must add up to `amountSompiExact`. Empty: no breakdown (coinbase, or a row
+   * written by an older daemon) — hold such a received row for review.
+   */
+  credits?: HistoryCredit[];
 }
 
 export interface WalletHistory {
