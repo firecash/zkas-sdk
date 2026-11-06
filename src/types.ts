@@ -173,6 +173,8 @@ export interface WalletBalance {
 /** One output of a history row's transaction: for `received`, a payment to one of this wallet's addresses. */
 export interface HistoryCredit {
   recipient: string;
+  /** Diversifier index the address was issued at (`/address?index=`), as a decimal string: the customer id. Null on sent rows. */
+  index?: string | null;
   amountSompi: number;
   /** Exact decimal string; `amountSompi` loses precision above 2^53. */
   amountSompiExact: string;
